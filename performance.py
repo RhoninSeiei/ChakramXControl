@@ -14,6 +14,8 @@ from dataclasses import dataclass
 import struct
 from typing import Protocol
 
+from i18n import tr
+
 
 class Transport(Protocol):
     def exchange(self, request: bytes) -> bytes:
@@ -39,7 +41,7 @@ class DpiPreset:
 
 def _validate_slot(slot: int) -> None:
     if type(slot) is not int or not 1 <= slot <= 4:
-        raise ValueError("DPI 档位必须为 1 至 4 的整数。")
+        raise ValueError(tr("DPI 档位必须为 1 至 4 的整数。", "The DPI slot must be an integer from 1 to 4."))
 
 
 class Performance:
@@ -49,7 +51,8 @@ class Performance:
     def _read(self, request: bytes, minimum_length: int) -> bytes:
         reply = self.transport.exchange(request)
         if len(reply) < minimum_length or reply[:len(request)] != request:
-            raise PerformanceError("鼠标返回的配置数据不完整或命令不匹配，请重新读取。")
+            raise PerformanceError(tr("鼠标返回的配置数据不完整或命令不匹配，请重新读取。",
+                                      "The mouse returned incomplete configuration data or a mismatched command. Refresh and try again."))
         return reply
 
     def read_state(self) -> ProfileState:
@@ -57,7 +60,9 @@ class Performance:
         profile = reply[10] + 1
         slot = reply[11]
         if not 1 <= profile <= 5 or not 1 <= slot <= 4:
-            raise PerformanceError(f"鼠标返回无效的配置 {profile} 或 DPI 档位 {slot}。")
+            raise PerformanceError(tr("鼠标返回无效的配置 {profile} 或 DPI 档位 {slot}。",
+                                      "The mouse returned an invalid profile ({profile}) or DPI slot ({slot}).",
+                                      profile=profile, slot=slot))
         return ProfileState(profile, slot)
 
     def read_dpi(self) -> tuple[DpiPreset, ...]:
@@ -68,7 +73,9 @@ class Performance:
             encoded_x, encoded_y = struct.unpack_from("<HH", reply, 4 + index * 4)
             x, y = encoded_x * 50 + 50, encoded_y * 50 + 50
             if not 100 <= x <= 36000 or not 100 <= y <= 36000:
-                raise PerformanceError(f"鼠标返回无效 DPI，档位 {index + 1} 为 X={x}，Y={y}。")
+                raise PerformanceError(tr("鼠标返回无效 DPI，档位 {slot} 为 X={x}，Y={y}。",
+                                          "The mouse returned invalid DPI for slot {slot}: X={x}, Y={y}.",
+                                          slot=index + 1, x=x, y=y))
             color = tuple(colors[4 + index * 3:7 + index * 3])
             presets.append(DpiPreset(x, y, color))
         return tuple(presets)
@@ -77,10 +84,12 @@ class Performance:
         if expected_profile is None:
             return
         if type(expected_profile) is not int or not 1 <= expected_profile <= 5:
-            raise ValueError("配置编号必须为 1 至 5 的整数。")
+            raise ValueError(tr("配置编号必须为 1 至 5 的整数。", "The profile must be an integer from 1 to 5."))
         current = self.read_state().profile
         if current != expected_profile:
-            raise PerformanceError(f"鼠标当前配置为 {current}，请重新读取配置后再应用。")
+            raise PerformanceError(tr("鼠标当前配置为 {profile}，请重新读取配置后再应用。",
+                                      "The active mouse profile is {profile}; refresh before applying.",
+                                      profile=current))
 
     def set_dpi(self, slot: int, dpi: int, *, expected_profile: int | None = None, persist: bool = True) -> None:
         """Set both axes of one slot while retaining its indicator color.
@@ -90,7 +99,8 @@ class Performance:
         """
         _validate_slot(slot)
         if type(dpi) is not int or not 100 <= dpi <= 36000 or dpi % 50:
-            raise ValueError("DPI 必须为 100 至 36000 的整数，步进为 50。")
+            raise ValueError(tr("DPI 必须为 100 至 36000 的整数，步进为 50。",
+                                "DPI must be an integer from 100 to 36000 in increments of 50."))
         preset = self.read_dpi()[slot - 1]
         self._check_profile(expected_profile)
         encoded = dpi // 50 - 1
@@ -102,8 +112,9 @@ class Performance:
             actual = self.read_dpi()[slot - 1]
             if actual.x != dpi or actual.y != dpi or actual.color != preset.color:
                 raise PerformanceError(
-                    f"DPI 写入后的回读不一致，档位 {slot} 目标为 {dpi}，"
-                    f"实际为 X={actual.x}，Y={actual.y}，指示颜色为 {actual.color}。"
+                    tr("DPI 写入后的回读不一致，档位 {slot} 目标为 {dpi}，实际为 X={x}，Y={y}，指示颜色为 {color}。",
+                       "DPI readback mismatch for slot {slot}: requested {dpi}, received X={x}, Y={y}, indicator color {color}.",
+                       slot=slot, dpi=dpi, x=actual.x, y=actual.y, color=actual.color)
                 )
 
     def select_dpi(self, slot: int, *, expected_profile: int | None = None, persist: bool = True) -> None:
@@ -115,6 +126,10 @@ class Performance:
             self.transport.exchange(b"\x50\x03")
             actual = self.read_state()
             if expected_profile is not None and actual.profile != expected_profile:
-                raise PerformanceError(f"鼠标当前配置为 {actual.profile}，请重新读取配置。")
+                raise PerformanceError(tr("鼠标当前配置为 {profile}，请重新读取配置。",
+                                          "The active mouse profile is {profile}; refresh the configuration.",
+                                          profile=actual.profile))
             if actual.dpi_slot != slot:
-                raise PerformanceError(f"DPI 档位回读为 {actual.dpi_slot}，目标为 {slot}，请重新读取。")
+                raise PerformanceError(tr("DPI 档位回读为 {actual}，目标为 {target}，请重新读取。",
+                                          "DPI slot readback is {actual}; the requested slot was {target}. Refresh and try again.",
+                                          actual=actual.dpi_slot, target=slot))

@@ -1,4 +1,5 @@
 from contextlib import nullcontext
+from copy import deepcopy
 from dataclasses import replace
 from types import SimpleNamespace
 import tkinter as tk
@@ -8,10 +9,14 @@ from unittest.mock import Mock, patch
 
 from light_ui import LightingPanel
 from lighting import LightSetting
+from i18n import get_language, set_language
 
 
 class LightingPanelTests(unittest.TestCase):
     def setUp(self):
+        previous_language = get_language()
+        set_language("zh")
+        self.addCleanup(set_language, previous_language)
         self.root = tk.Tk()
         self.root.withdraw()
         self.addCleanup(self.root.destroy)
@@ -185,6 +190,108 @@ class LightingPanelTests(unittest.TestCase):
         self.panel.load(preserve_draft=True)
         self.assertEqual(self.panel.color.get(), "#123456")
         self.assertTrue(self.panel.save.instate(["!disabled"]))
+
+    def test_language_switch_preserves_all_zone_drafts_and_stable_codes_without_io(self):
+        self.panel.color.set("#123456")
+        self.select("front")
+        self.panel.effect.set("常亮")
+        self.panel.brightness.set("100%")
+        self.select("all")
+        self.panel.effect.set("彩虹")
+        self.panel.direction.set("逆时针")
+        self.panel.speed.set("慢")
+        self.panel.color.set("#ABCDEF")
+        drafts = deepcopy(self.panel.drafts)
+        values = self.panel._form_values()
+        self.light.reset_mock()
+        self.perf.reset_mock()
+        set_language("en")
+        self.panel.retranslate("zh")
+        self.assertEqual(self.panel._form_values(), values)
+        self.assertEqual(self.panel.drafts, drafts)
+        self.assertEqual(self.panel.zone.get(), "all")
+        self.assertEqual(self.panel.effect.get(), "Rainbow")
+        self.assertEqual(self.panel.direction.get(), "Counterclockwise")
+        self.assertEqual(self.panel.speed.get(), "Slow")
+        self.assertEqual(self.panel.color.get(), "#ABCDEF")
+        self.assertEqual(self.panel.save.cget("text"), "Save to current profile")
+        self.assertIn("Unsaved", self.panel.draft_status.get())
+        self.assertEqual(self.panel.actual["logo"]["effect"].get(), "Static")
+        self.assertEqual(self.panel.actual["wheel"]["color"].get(), "Dynamic colors")
+        self.assertEqual(self.panel.actual["front"]["color"].get(), "Not lit")
+        self.select("front")
+        self.assertEqual(self.panel.effect.get(), "Static")
+        self.assertEqual(self.panel.brightness.get(), "100%")
+        self.select("logo")
+        self.assertEqual(self.panel.color.get(), "#123456")
+        set_language("zh")
+        self.panel.retranslate("en")
+        self.assertEqual(self.panel.drafts, drafts)
+        self.assertEqual(self.panel.save.cget("text"), "保存到当前预设")
+        self.light.read_lighting.assert_not_called()
+        self.light.set_lighting.assert_not_called()
+        self.perf.read_state.assert_not_called()
+
+    def test_language_switch_preserves_color_entry_caret_and_selection(self):
+        self.panel.color.set("#123456")
+        self.panel.hex_entry.icursor(4)
+        self.panel.hex_entry.selection_range(2, 5)
+        set_language("en")
+        self.panel.retranslate("zh")
+        self.assertEqual(self.panel.hex_entry.index(tk.INSERT), 4)
+        self.assertEqual((self.panel.hex_entry.index(tk.SEL_FIRST), self.panel.hex_entry.index(tk.SEL_LAST)), (2, 5))
+
+    def test_english_initialization_and_clean_translation_do_not_create_drafts(self):
+        set_language("en")
+        self.panel.retranslate("zh")
+        self.assertEqual(self.panel.drafts, {})
+        self.assertTrue(self.panel.save.instate(["disabled"]))
+        other_frame = ttk.Frame(self.root)
+        other = LightingPanel(self.editor, other_frame)
+        other.load()
+        self.assertEqual(other.effect.get(), "Static")
+        self.assertEqual(other.direction.get(), "Clockwise")
+        self.assertEqual(other.speed.get(), "Medium")
+        self.assertIn("Color cycle", other.effects.cget("values"))
+        self.assertIn("Profile 2", other.summary.get())
+        pending = [other_frame]
+        while pending:
+            widget = pending.pop()
+            if hasattr(widget, "_ui_text"):
+                self.assertEqual(widget.cget("text"), widget._ui_text[1])
+            pending.extend(widget.winfo_children())
+
+    def test_english_advanced_draft_applies_original_wire_codes(self):
+        self.select("all")
+        self.panel.effect.set("彩虹")
+        self.panel.brightness.set("75%")
+        self.panel.direction.set("逆时针")
+        self.panel.speed.set("慢")
+        set_language("en")
+        self.panel.retranslate("zh")
+        confirmed = {zone: LightSetting(3, 75, (0, 0, 0), 1, 0, 9) for zone in self.snapshot}
+        self.light.set_lighting.return_value = confirmed
+        self.editor.run.side_effect = lambda operation, _: operation(object())
+        self.panel.apply()
+        self.light.set_lighting.assert_called_once_with(
+            "all", mode=3, brightness=75, color=(0, 0, 0),
+            expected_profile=2, persist=True, direction=1, speed=9,
+        )
+        self.assertEqual(self.panel.actual["logo"]["animation"].get(), "Counterclockwise, Slow speed")
+        self.assertIn("saved and verified", self.editor.run.call_args.args[1])
+
+    def test_english_conflict_and_color_errors_remain_localized(self):
+        self.panel.color.set("invalid")
+        set_language("en")
+        self.panel.retranslate("zh")
+        self.panel.apply()
+        self.assertEqual(self.errors.call_args.args[0], "Color format")
+        self.assertIn("six-digit", self.errors.call_args.args[1])
+        self.snapshot["logo"] = replace(self.snapshot["logo"], brightness=50)
+        self.panel.load(preserve_draft=True)
+        self.assertIn("changed on the mouse", self.panel.draft_status.get())
+        self.assertEqual(self.panel.color.get(), "invalid")
+        self.assertTrue(self.panel.save.instate(["disabled"]))
 
 
 if __name__ == "__main__":

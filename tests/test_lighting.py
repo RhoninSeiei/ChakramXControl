@@ -1,6 +1,7 @@
 import unittest
 
-from lighting import LightSetting, Lighting, LightingError
+from lighting import LightSetting, Lighting, LightingError, EFFECTS, SPEEDS, effect_names, speed_names, effect_label
+from i18n import get_language, set_language
 
 
 STATE = bytes.fromhex("12 00 00 00 17 02 22 00 05 07 01 03 ff ff")
@@ -36,6 +37,9 @@ class ScriptedTransport:
 
 class LightingTests(unittest.TestCase):
     def setUp(self):
+        previous_language = get_language()
+        set_language("zh")
+        self.addCleanup(set_language, previous_language)
         self.before = {
             "logo": LightSetting(0, 25, (42, 12, 27)),
             "wheel": LightSetting(1, 50, (43, 12, 27)),
@@ -151,6 +155,32 @@ class LightingTests(unittest.TestCase):
             transport = ScriptedTransport([(b"\x12\x03\x00", response)])
             with self.assertRaises(LightingError):
                 Lighting(transport).read_zone("logo")
+
+    def test_localized_names_keep_the_same_wire_codes(self):
+        self.assertEqual(effect_names("zh")[3], "彩虹")
+        self.assertEqual(effect_names("en")[3], "Rainbow")
+        self.assertEqual(speed_names("en"), {5: "Fast", 7: "Medium", 9: "Slow"})
+        set_language("en")
+        self.assertEqual(effect_label(5), "Comet")
+        self.assertEqual(effect_label(0xFE), "Other effect 0xFE")
+        self.assertEqual(EFFECTS[5], "彗星")
+        self.assertEqual(SPEEDS[7], "中")
+
+    def test_english_validation_and_read_errors(self):
+        set_language("en")
+        transport = ScriptedTransport([])
+        with self.assertRaisesRegex(ValueError, "Brightness must be an integer"):
+            Lighting(transport).set_lighting("logo", brightness=-1)
+        with self.assertRaisesRegex(ValueError, "all zones"):
+            Lighting(transport).set_lighting("logo", mode=3)
+        with self.assertRaisesRegex(ValueError, "explicit effect, brightness, and color"):
+            Lighting(transport).set_lighting("all")
+        with self.assertRaisesRegex(ValueError, "must be logo, wheel, or front"):
+            Lighting(transport).read_zone("all")
+        self.assertEqual(transport.requests, [])
+        failed = ScriptedTransport([(b"\x12\x03\x00", b"\xff\xaa")])
+        with self.assertRaisesRegex(LightingError, "incomplete lighting data"):
+            Lighting(failed).read_zone("logo")
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ import os
 import sqlite3
 from contextlib import closing
 from pathlib import Path
+from i18n import tr
 
 
 class StickRecord:
@@ -27,7 +28,7 @@ class StickRecord:
 
     def save(self, device, profile, mode, keys=None):
         if keys is not None and len(keys) != 4:
-            raise ValueError("需要四个方向的映射。")
+            raise ValueError(tr("需要四个方向的映射。", "Bindings for all four directions are required."))
         with closing(self._connect()) as db, db:
             db.execute("""INSERT INTO layouts VALUES(?,?,?,?,?,?,?)
                 ON CONFLICT(device,profile) DO UPDATE SET mode=excluded.mode,

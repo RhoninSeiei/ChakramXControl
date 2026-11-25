@@ -4,14 +4,27 @@ import tkinter as tk
 from tkinter import colorchooser, messagebox, ttk
 
 from device import configuration_session
-from lighting import EFFECTS, SPEEDS, ZONE_EFFECTS, Lighting
+from lighting import EFFECTS, SPEEDS, ZONE_EFFECTS, Lighting, effect_label, effect_names, speed_names
+from i18n import bind_text, get_language, refresh_text, tr
 from performance import Performance
 
 
 ZONES = {"all": "全部灯区", "logo": "徽标", "wheel": "滚轮", "front": "前端灯带"}
-ALL = EFFECTS
-COMMON = {code: ALL[code] for code in ZONE_EFFECTS}
 USES_COLOR = {0, 1, 4, 5}
+ZONE_LABELS = {
+    "all": ("全部灯区", "All zones"), "logo": ("徽标", "Logo"),
+    "wheel": ("滚轮", "Scroll wheel"), "front": ("前端灯带", "Front strip"),
+}
+
+
+def zone_name(zone):
+    return tr(*ZONE_LABELS[zone])
+
+
+def direction_names(language=None):
+    return {0: "顺时针", 1: "逆时针"} if (language or get_language()) == "zh" else {
+        0: "Clockwise", 1: "Counterclockwise",
+    }
 
 
 @dataclass
@@ -39,17 +52,17 @@ class LightingPanel:
         self.direction = tk.StringVar()
         self.speed = tk.StringVar()
         self.random_color = tk.BooleanVar()
-        self.summary = tk.StringVar(value="等待鼠标回读。")
-        self.draft_status = tk.StringVar(value="编辑灯效后可保存到当前预设。")
+        self.summary = tk.StringVar(value=tr("等待鼠标回读。", "Waiting for mouse readback."))
+        self.draft_status = tk.StringVar(value=tr("编辑灯效后可保存到当前预设。", "Edit lighting, then save it to the current profile."))
 
-        live = ttk.LabelFrame(frame, text="当前生效灯效", padding=10)
+        live = bind_text(ttk.LabelFrame(frame, padding=10), '当前生效灯效', 'Current lighting')
         live.pack(fill="x", pady=(0, 12))
-        for column, caption in enumerate(("灯区", "效果", "亮度", "颜色", "动画设置")):
-            ttk.Label(live, text=caption).grid(row=0, column=column, sticky="w", padx=(0, 16), pady=(0, 5))
+        for column, caption in enumerate((("灯区", "Zone"), ("效果", "Effect"), ("亮度", "Brightness"), ("颜色", "Color"), ("动画设置", "Animation"))):
+            bind_text(ttk.Label(live), *caption).grid(row=0, column=column, sticky="w", padx=(0, 16), pady=(0, 5))
         self.actual = {}
         self.swatches = {}
         for row, key in enumerate(("logo", "wheel", "front"), 1):
-            ttk.Label(live, text=ZONES[key], width=9).grid(row=row, column=0, sticky="w", pady=4)
+            bind_text(ttk.Label(live, width=12), *ZONE_LABELS[key]).grid(row=row, column=0, sticky="w", pady=4)
             fields = {name: tk.StringVar(value="—") for name in ("effect", "brightness", "color", "animation")}
             self.actual[key] = fields
             ttk.Label(live, textvariable=fields["effect"], width=12).grid(row=row, column=1, sticky="w", padx=(0, 16))
@@ -64,18 +77,18 @@ class LightingPanel:
             ttk.Label(live, textvariable=fields["animation"]).grid(row=row, column=4, sticky="w")
         ttk.Label(live, textvariable=self.summary).grid(row=4, column=0, columnspan=5, sticky="w", pady=(6, 0))
 
-        edit = ttk.LabelFrame(frame, text="编辑灯效", padding=10)
+        edit = bind_text(ttk.LabelFrame(frame, padding=10), '编辑灯效', 'Edit lighting')
         edit.pack(fill="x")
         bar = ttk.Frame(edit)
         bar.pack(anchor="w")
-        for key, name in ZONES.items():
-            ttk.Radiobutton(bar, variable=self.zone, value=key, text=name, command=self.select_zone).pack(
+        for key in ZONES:
+            bind_text(ttk.Radiobutton(bar, variable=self.zone, value=key, command=self.select_zone), *ZONE_LABELS[key]).pack(
                 side="left", padx=(0, 14))
         ttk.Separator(edit).pack(fill="x", pady=10)
         form = ttk.Frame(edit)
         form.pack(anchor="w")
-        for i, caption in enumerate(("效果", "亮度", "颜色")):
-            ttk.Label(form, text=caption, width=8).grid(row=i, column=0, sticky="w", pady=4)
+        for i, caption in enumerate((("效果", "Effect"), ("亮度", "Brightness"), ("颜色", "Color"))):
+            bind_text(ttk.Label(form, width=12), *caption).grid(row=i, column=0, sticky="w", pady=4)
         self.effects = ttk.Combobox(form, textvariable=self.effect, state="readonly", width=17)
         self.effects.grid(row=0, column=1, sticky="w")
         self.effects.bind("<<ComboboxSelected>>", self.choose_effect)
@@ -84,25 +97,27 @@ class LightingPanel:
         self.level.grid(row=1, column=1, sticky="w")
         self.hex_entry = ttk.Entry(form, textvariable=self.color, width=19)
         self.hex_entry.grid(row=2, column=1, sticky="w")
-        self.pick = ttk.Button(form, text="选择颜色…", command=self.choose_color)
+        self.pick = bind_text(ttk.Button(form, command=self.choose_color), '选择颜色…', 'Choose color…')
         self.pick.grid(row=2, column=2, padx=6)
         self.animation = ttk.Frame(form)
         self.animation.grid(row=3, column=0, columnspan=3, sticky="w", pady=3)
-        ttk.Label(self.animation, text="方向").pack(side="left")
-        ttk.Combobox(self.animation, textvariable=self.direction, state="readonly", width=7,
-                     values=("顺时针", "逆时针")).pack(side="left", padx=5)
-        self.speed_box = ttk.Combobox(self.animation, textvariable=self.speed, values=list(SPEEDS.values()),
-                                      state="readonly", width=5)
-        self.speed_label = ttk.Label(self.animation, text="速度")
-        self.random_box = ttk.Checkbutton(self.animation, text="随机颜色", variable=self.random_color)
+        bind_text(ttk.Label(self.animation), '方向', 'Direction').pack(side="left")
+        self.direction_box = ttk.Combobox(self.animation, textvariable=self.direction, state="readonly", width=18,
+                                         values=tuple(direction_names().values()))
+        self.direction_box.pack(side="left", padx=5)
+        self.speed_box = ttk.Combobox(self.animation, textvariable=self.speed, values=list(speed_names().values()),
+                                      state="readonly", width=9)
+        self.speed_label = bind_text(ttk.Label(self.animation), '速度', 'Speed')
+        self.random_box = bind_text(ttk.Checkbutton(self.animation, variable=self.random_color), '随机颜色', 'Random color')
         actions = ttk.Frame(edit)
         actions.pack(anchor="w", pady=(10, 3))
-        self.save = ttk.Button(actions, text="保存到当前预设", command=self.apply)
+        self.save = bind_text(ttk.Button(actions, command=self.apply), '保存到当前预设', 'Save to current profile')
         self.save.pack(side="left")
-        self.reload_zone = ttk.Button(actions, text="重新载入当前灯区", command=self.reset_draft)
+        self.reload_zone = bind_text(ttk.Button(actions, command=self.reset_draft), '重新载入当前灯区', 'Reload selected zone')
         self.reload_zone.pack(side="left", padx=8)
         ttk.Label(edit, textvariable=self.draft_status, wraplength=720, justify="left").pack(anchor="w", pady=(3, 0))
-        self.last_effect = ""
+        self.last_effect = None
+        self._load_error = None
         for variable in self._form_variables():
             variable.trace_add("write", self._form_changed)
         self.select_zone()
@@ -110,8 +125,50 @@ class LightingPanel:
     def _form_variables(self):
         return (self.effect, self.brightness, self.color, self.direction, self.speed, self.random_color)
 
-    def _form_values(self):
-        return tuple(variable.get() for variable in self._form_variables())
+    def _form_values(self, language=None):
+        values = [variable.get() for variable in self._form_variables()]
+        # Drafts contain wire codes, so translating labels never changes inputs.
+        for index, names in ((0, effect_names(language)), (3, direction_names(language)),
+                             (4, speed_names(language))):
+            values[index] = next((code for code, label in names.items() if label == values[index]), values[index])
+        return tuple(values)
+
+    def _set_form_values(self, values):
+        display = list(values)
+        for index, names in ((0, effect_names()), (3, direction_names()), (4, speed_names())):
+            display[index] = names.get(display[index], display[index])
+        self._loading_form = True
+        try:
+            for variable, value in zip(self._form_variables(), display):
+                if variable.get() != value:
+                    variable.set(value)
+        finally:
+            self._loading_form = False
+
+    def _mode_names(self):
+        names = effect_names()
+        return names if self.zone.get() == "all" else {code: names[code] for code in ZONE_EFFECTS}
+
+    def retranslate(self, old_language):
+        values = self._form_values(old_language)
+        refresh_text(self.frame)
+        self.effects.configure(values=tuple(self._mode_names().values()))
+        self.direction_box.configure(values=tuple(direction_names().values()))
+        self.speed_box.configure(values=tuple(speed_names().values()))
+        self._set_form_values(values)
+        self.last_effect = values[0]
+        self._show_actual()
+        self._update_summary()
+        self.edit_effect()
+
+    def _update_summary(self):
+        if self.zones is not None:
+            self.summary.set(tr("当前预设 {profile}，数据来自鼠标回读。",
+                                "Profile {profile}, read back from the mouse.", profile=self.context[1]))
+        elif self._load_error is not None:
+            self.summary.set(tr("灯效读取失败。{error}", "Lighting read failed. {error}", error=self._load_error))
+        else:
+            self.summary.set(tr("等待鼠标回读。", "Waiting for mouse readback."))
 
     def _current_context(self):
         if self.editor.current is None or self.editor.device is None:
@@ -127,20 +184,21 @@ class LightingPanel:
         self.context = context
         try:
             if context is None:
-                raise RuntimeError("鼠标尚未连接。")
-            with configuration_session(self.editor.device) as tr:
-                current = Performance(tr).read_state().profile
+                raise RuntimeError(tr("鼠标尚未连接。", "The mouse is not connected."))
+            with configuration_session(self.editor.device) as transport:
+                current = Performance(transport).read_state().profile
                 if current != context[1]:
-                    raise RuntimeError("活动预设发生变化，请刷新设备。")
-                zones = Lighting(tr).read_lighting()
-                if Performance(tr).read_state().profile != current:
-                    raise RuntimeError("读取灯效期间预设发生变化，请刷新设备。")
+                    raise RuntimeError(tr("活动预设发生变化，请刷新设备。", "The active profile changed. Refresh the device."))
+                zones = Lighting(transport).read_lighting()
+                if Performance(transport).read_state().profile != current:
+                    raise RuntimeError(tr("读取灯效期间预设发生变化，请刷新设备。", "The profile changed while reading lighting. Refresh the device."))
             self.zones = zones
-            self.summary.set(f"当前预设 {current}，数据来自鼠标回读。")
+            self._load_error = None
         except (OSError, ValueError, RuntimeError) as exc:
             self.zones = None
-            self.summary.set(f"灯效读取失败。{exc}")
+            self._load_error = exc
         self._show_actual()
+        self._update_summary()
         zone = self.zone.get()
         unchanged = before is not None and self.zones is not None and all(
             before[key] == self.zones[key] for key in self._relevant_zones(zone)
@@ -161,33 +219,38 @@ class LightingPanel:
     @classmethod
     def current_color(cls, item):
         if item.mode == 240 or item.brightness == 0:
-            return "未点亮", None
+            return tr("未点亮", "Not lit"), None
         if item.mode in (2, 3):
-            return "动态颜色", None
+            return tr("动态颜色", "Dynamic colors"), None
         if item.mode == 6:
-            return "随电量变化", None
+            return tr("随电量变化", "Battery-dependent"), None
         if item.mode == 5 and item.random == 1:
-            return "随机颜色", None
+            return tr("随机颜色", "Random colors"), None
         if item.mode in USES_COLOR:
             color = cls.format_color(item.color)
-            return (color if item.mode == 0 else f"基色 {color}"), color
-        return "由当前效果控制", None
+            return (color if item.mode == 0 else tr("基色 {color}", "Base {color}", color=color)), color
+        return tr("由当前效果控制", "Effect-controlled"), None
 
     @staticmethod
     def current_animation(item):
-        direction = {0: "顺时针", 1: "逆时针"}.get(item.direction, f"方向 {item.direction}")
+        direction = direction_names().get(item.direction, tr("方向 {value}", "Direction {value}", value=item.direction))
         if item.mode == 3:
-            speed = SPEEDS.get(item.speed, "默认" if item.speed == 0 else str(item.speed))
-            return f"{direction}，速度{speed}"
+            speed = speed_names().get(item.speed, tr("默认", "Default") if item.speed == 0 else str(item.speed))
+            return tr("{direction}，速度{speed}", "{direction}, {speed} speed", direction=direction, speed=speed)
         if item.mode == 5:
-            color = "随机颜色" if item.random == 1 else "固定基色"
-            return f"{direction}，{color}"
-        return {1: "亮度随呼吸变化", 2: "颜色自动变化", 4: "按键触发", 6: "随电量变化"}.get(item.mode, "—")
+            color = tr("随机颜色", "Random colors") if item.random == 1 else tr("固定基色", "Fixed base color")
+            return tr("{direction}，{color}", "{direction}, {color}", direction=direction, color=color)
+        return {
+            1: tr("亮度随呼吸变化", "Pulsing brightness"),
+            2: tr("颜色自动变化", "Automatic color cycle"),
+            4: tr("按键触发", "Button-triggered"),
+            6: tr("随电量变化", "Battery-dependent"),
+        }.get(item.mode, "—")
 
     def _show_actual(self):
         for key, fields in self.actual.items():
             item = self.zones[key] if self.zones else None
-            fields["effect"].set(ALL.get(item.mode, f"效果 0x{item.mode:02X}") if item else "—")
+            fields["effect"].set(effect_label(item.mode) if item else "—")
             fields["brightness"].set(("—" if item.mode == 240 else f"{item.brightness}%") if item else "—")
             label, color = self.current_color(item) if item else ("—", None)
             fields["color"].set(label)
@@ -202,7 +265,7 @@ class LightingPanel:
     def select_zone(self):
         zone = self.zone.get()
         self._shown_zone = zone
-        modes = ALL if zone == "all" else COMMON
+        modes = self._mode_names()
         self.effects.configure(values=tuple(modes.values()))
         draft = self.drafts.get(zone)
         item = None
@@ -212,11 +275,11 @@ class LightingPanel:
             elif len(set(self.zones.values())) == 1:
                 item = self.zones["logo"]
         values = (
-            ALL.get(item.mode, "") if item else "",
+            item.mode if item and item.mode in EFFECTS else "",
             f"{item.brightness}%" if item else "100%",
             self.format_color(item.color) if item else "#FF2020",
-            "逆时针" if item and item.direction == 1 else "顺时针",
-            SPEEDS.get(item.speed, "中") if item else "中",
+            1 if item and item.direction == 1 else 0,
+            item.speed if item and item.speed in SPEEDS else 7,
             bool(item and item.random == 1),
         )
         self._clean_values = draft.clean_values if draft else values
@@ -224,13 +287,8 @@ class LightingPanel:
             self._editing_baseline = draft.baseline.copy()
         else:
             self._editing_baseline = {key: self.zones[key] for key in self._relevant_zones(zone)} if self.zones else {}
-        self._loading_form = True
-        try:
-            for variable, value in zip(self._form_variables(), draft.values if draft else values):
-                variable.set(value)
-        finally:
-            self._loading_form = False
-        self.last_effect = self.effect.get()
+        self._set_form_values(draft.values if draft else values)
+        self.last_effect = self._form_values()[0]
         self.edit_effect()
 
     def _form_changed(self, *_):
@@ -253,16 +311,16 @@ class LightingPanel:
         self.select_zone()
 
     def choose_effect(self, event=None):
-        if self.last_effect == ALL[240] and self.effect.get() != self.last_effect:
+        if self.last_effect == 240 and self._form_values()[0] != self.last_effect:
             if self.brightness.get() == "0%":
                 self.brightness.set("100%")
             if self.color.get() == "#000000":
                 self.color.set("#FF2020")
-        self.last_effect = self.effect.get()
+        self.last_effect = self._form_values()[0]
         self.edit_effect()
 
     def edit_effect(self):
-        modes = ALL if self.zone.get() == "all" else COMMON
+        modes = self._mode_names()
         code = next((k for k, name in modes.items() if name == self.effect.get()), None)
         ready = self.zones is not None
         self.effects.configure(state="readonly" if ready else "disabled")
@@ -283,7 +341,7 @@ class LightingPanel:
         self._update_draft_status()
 
     def _update_draft_status(self):
-        modes = ALL if self.zone.get() == "all" else COMMON
+        modes = self._mode_names()
         code = next((k for k, name in modes.items() if name == self.effect.get()), None)
         ready = self.zones is not None
         dirty = self.zone.get() in self.drafts
@@ -291,22 +349,22 @@ class LightingPanel:
         self.save.configure(state="normal" if ready and code is not None and dirty and not conflict else "disabled")
         self.reload_zone.configure(state="normal" if ready and dirty else "disabled")
         if not ready:
-            self.draft_status.set("等待有效的鼠标回读，草稿暂时保留。" if dirty else "等待有效的鼠标回读。")
+            self.draft_status.set(tr('等待有效的鼠标回读，草稿暂时保留。', 'Waiting for valid mouse readback. The draft is retained.') if dirty else tr('等待有效的鼠标回读。', 'Waiting for valid mouse readback.'))
         elif conflict:
-            self.draft_status.set("当前灯区的生效设置发生变化。草稿保留，请重新载入当前灯区后编辑。")
+            self.draft_status.set(tr('当前灯区的生效设置发生变化。草稿保留，请重新载入当前灯区后编辑。', 'This zone changed on the mouse. The draft is retained. Reload the selected zone before editing.'))
         elif dirty:
-            self.draft_status.set("草稿待保存，保存后应用到鼠标。")
+            self.draft_status.set(tr('草稿待保存，保存后应用到鼠标。', 'Unsaved draft. Save to apply it to the mouse.'))
         elif code is None and self.zone.get() == "all":
-            self.draft_status.set("三个灯区的当前设置不同。选择效果、亮度和颜色后可统一保存。")
+            self.draft_status.set(tr('三个灯区的当前设置不同。选择效果、亮度和颜色后可统一保存。', 'The three zones have different settings. Select an effect, brightness, and color to apply to all zones.'))
         elif code is None:
-            self.draft_status.set("选择受支持的效果后可编辑，彩虹、彗星和电量效果通过全部灯区编辑。")
+            self.draft_status.set(tr('选择受支持的效果后可编辑，彩虹、彗星和电量效果通过全部灯区编辑。', 'Select a supported effect to edit. Use All zones for Rainbow, Comet, and Battery effects.'))
         else:
-            self.draft_status.set("编辑区与当前回读一致。")
+            self.draft_status.set(tr('编辑区与当前回读一致。', 'The editor matches the current mouse readback.'))
 
     def choose_color(self):
         initial = self.color.get()
         result = colorchooser.askcolor(color=initial if re.fullmatch(r"#[0-9A-Fa-f]{6}", initial) else "#FFFFFF",
-                                       parent=self.frame, title="选择灯光颜色")[1]
+                                       parent=self.frame, title=tr('选择灯光颜色', 'Choose lighting color'))[1]
         if result:
             self.color.set(result.upper())
 
@@ -317,10 +375,10 @@ class LightingPanel:
             self.load()
             return
         if self._has_conflict():
-            messagebox.showerror("灯效已变化", "当前灯区的生效设置发生变化，请重新载入当前灯区后编辑。", parent=self.frame)
+            messagebox.showerror(tr('灯效已变化', 'Lighting changed'), tr('当前灯区的生效设置发生变化，请重新载入当前灯区后编辑。', 'This zone changed on the mouse. Reload the selected zone before editing.'), parent=self.frame)
             return
         zone = self.zone.get()
-        modes = ALL if zone == "all" else COMMON
+        modes = self._mode_names()
         mode = next((k for k, v in modes.items() if v == self.effect.get()), None)
         if mode is None:
             return
@@ -328,7 +386,7 @@ class LightingPanel:
         if mode in USES_COLOR and not (mode == 5 and self.random_color.get()):
             value = self.color.get().strip()
             if not re.fullmatch(r"#?[0-9A-Fa-f]{6}", value):
-                messagebox.showerror("颜色格式", "请输入六位十六进制颜色，如 #FF2020。", parent=self.frame)
+                messagebox.showerror(tr('颜色格式', 'Color format'), tr('请输入六位十六进制颜色，如 #FF2020。', 'Enter a six-digit hexadecimal color, such as #FF2020.'), parent=self.frame)
                 return
             color = tuple(bytes.fromhex(value.lstrip("#")))
         elif zone == "all":
@@ -337,22 +395,22 @@ class LightingPanel:
             level = int(self.brightness.get().rstrip("%"))
             options = {}
             if mode in (3, 5):
-                options["direction"] = int(self.direction.get() == "逆时针")
+                options["direction"] = self._form_values()[3]
             if mode == 3:
-                options["speed"] = next(k for k, label in SPEEDS.items() if label == self.speed.get())
+                options["speed"] = next(k for k, label in speed_names().items() if label == self.speed.get())
             if mode == 5:
                 options["random"] = int(self.random_color.get())
         except (ValueError, StopIteration):
-            messagebox.showerror("灯效参数", "请选择有效的亮度和动画速度。", parent=self.frame)
+            messagebox.showerror(tr('灯效参数', 'Lighting settings'), tr('请选择有效的亮度和动画速度。', 'Select a valid brightness and animation speed.'), parent=self.frame)
             return
         baseline = self.drafts[zone].baseline.copy()
         profile = self.context[1]
 
-        def write(tr):
-            light = Lighting(tr)
+        def write(transport):
+            light = Lighting(transport)
             actual = light.read_lighting()
             if any(actual[key] != item for key, item in baseline.items()):
-                raise RuntimeError("灯效自编辑开始后发生变化，请核对刷新后的设置。")
+                raise RuntimeError(tr("灯效自编辑开始后发生变化，请核对刷新后的设置。", "Lighting changed after editing began. Check the refreshed settings."))
             confirmed = light.set_lighting(zone, mode=mode, brightness=level, color=color,
                                            expected_profile=profile, persist=True, **options)
             self.drafts.pop(zone, None)
@@ -360,4 +418,5 @@ class LightingPanel:
             self._show_actual()
             self.select_zone()
 
-        self.editor.run(write, f"{ZONES[zone]}的灯效已保存并通过鼠标回读校验。")
+        self.editor.run(write, tr("{zone}的灯效已保存并通过鼠标回读校验。",
+                                  "{zone} lighting was saved and verified by mouse readback.", zone=zone_name(zone)))
