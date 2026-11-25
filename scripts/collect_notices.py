@@ -321,11 +321,13 @@ def build_notice() -> str:
 
     sections.append(
         "## HIDAPI C library\n\n"
-        "The hidapi 0.15.0 source tag pins its HIDAPI submodule to commit "
-        f"`{HIDAPI_SUBMODULE_COMMIT}`. Its license files are included here because the "
-        "Windows binding distributes the native HIDAPI code. The upstream offers the same "
-        "three license alternatives. The GPLv3 text was checked against the installed "
-        "hidapi wheel and is reproduced in the binding section above.\n\n"
+        "The hidapi 0.15.0 wheel metadata does not record the HIDAPI submodule commit. "
+        "The official cython-hidapi 0.15.0 source tag pins that submodule to "
+        f"`{HIDAPI_SUBMODULE_COMMIT}`. This notice uses that pinned upstream source for the "
+        "native HIDAPI license alternatives. The wheel metadata lists only the Cython binding "
+        "license files. The upstream offers the same three alternatives. The GPLv3 text was "
+        "checked against the installed hidapi wheel and is reproduced in the binding section "
+        "above.\n\n"
         f"Source tag: https://github.com/trezor/cython-hidapi/tree/0.15.0\n"
         f"Pinned submodule: https://github.com/libusb/hidapi/tree/{HIDAPI_SUBMODULE_COMMIT}\n"
     )

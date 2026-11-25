@@ -2217,7 +2217,7 @@ under the terms of the BSD-style license or the original cython-hidapi license.
 
 ## HIDAPI C library
 
-The hidapi 0.15.0 source tag pins its HIDAPI submodule to commit `d6b2a974608dec3b76fb1e36c189f22b9cf3650c`. Its license files are included here because the Windows binding distributes the native HIDAPI code. The upstream offers the same three license alternatives. The GPLv3 text was checked against the installed hidapi wheel and is reproduced in the binding section above.
+The hidapi 0.15.0 wheel metadata does not record the HIDAPI submodule commit. The official cython-hidapi 0.15.0 source tag pins that submodule to `d6b2a974608dec3b76fb1e36c189f22b9cf3650c`. This notice uses that pinned upstream source for the native HIDAPI license alternatives. The wheel metadata lists only the Cython binding license files. The upstream offers the same three alternatives. The GPLv3 text was checked against the installed hidapi wheel and is reproduced in the binding section above.
 
 Source tag: https://github.com/trezor/cython-hidapi/tree/0.15.0
 Pinned submodule: https://github.com/libusb/hidapi/tree/d6b2a974608dec3b76fb1e36c189f22b9cf3650c

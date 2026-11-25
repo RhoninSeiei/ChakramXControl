@@ -1,7 +1,7 @@
 param([string]$Python = 'python')
 
 $ErrorActionPreference = 'Stop'
-$pythonExe = (Get-Command $Python -CommandType Application).Source
+$pythonExe = (Get-Command $Python -CommandType Application | Select-Object -First 1).Source
 $project = Split-Path -Parent $PSScriptRoot
 Push-Location -LiteralPath $project
 try {
